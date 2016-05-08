@@ -1,0 +1,124 @@
+#!/usr/bin/perl
+# tcpspy Copyright (c) 2016 James Hunt <james@niftylogic.com>
+
+use strict;
+use warnings;
+
+# the colors boo!
+my $IP_h  = "\e[0;38;5;18m";
+my $TCP_h = "\e[0;38;5;52m";
+my $TCP_d = "\e[0;48;5;10m";
+
+my $IP1 = "\e[1;38;5;51m";
+my $P1  = "\e[1;38;5;46m";
+
+my $IP2 = "\e[1;38;5;208m";
+my $P2  = "\e[1;38;5;226m";
+
+my $F_OK  = "\e[1;38;5;46m";
+my $F_END = "\e[1;38;5;196m";
+
+my $fh;
+{ no warnings; open $fh, "-|", "tcpdump -Xnv ".join(' ', map { "'$_'" } @ARGV)
+	or die "Failed to exec tcpdump: $!\n... is tcpdump installed, executable and in your \$PATH?\n"; }
+
+my $raw = '';
+while (<$fh>) {
+	if (m/^\t0x[0-9a-fA-F]{4,}:  (.*)  /) {
+		my $hex = $1;
+		$hex =~ s/\s//g;
+		$raw .= pack('H*', $hex);
+		next;
+	}
+
+	if ($raw) {
+		print "  (found ".length($raw)." bytes)\n";
+
+		# how long is the IPv4 header?
+		my $c = unpack('C', $raw);
+		my ($ipv, $ipl) = (($c & 0xf0) >> 4, $c & 0x0f);
+		if ($ipv != 4) {
+			die "non-IPv4 packet header detected...\n";
+		}
+		my $ip_offset = $ipl * 4;
+
+		# how long is the TCP header?
+		my $tcpl = (unpack("x${ip_offset}x12C", $raw) & 0xf0) >> 4;
+		my $tcp_offset = $ip_offset + ($tcpl * 4);
+
+		my $n = 0;
+		my $row = 0;
+		my @data = unpack('C*', $raw);
+		while (@data) {
+			my $colored = 0;
+			my (@h, @a);
+
+			# IPv4 Header
+			if ($n == 0 || ($n > 0 && $n < $ip_offset)) {
+				$colored = 1;
+				push @h, $IP_h;
+				push @a, $IP_h;
+			}
+
+			# TCP header
+			if ($n >= $ip_offset && $n < $tcp_offset) {
+				$colored = 1;
+				push @h, $TCP_h;
+				push @a, $TCP_h;
+			}
+
+			# TCP data
+			if ($n >= $tcp_offset) {
+				$colored = 1;
+				push @h, $TCP_d;
+				push @a, $TCP_d;
+			}
+
+			my $i;
+			for ($i = 0; @data && $i < 16; $i++, $n++) {
+				if ($n == $ip_offset) { # transitioning from IP -> TCP header
+					$colored = 1;
+					push @h, "\e[0m$TCP_h";
+					push @a, "\e[0m$TCP_h";
+
+				} elsif ($n == $tcp_offset) { # start of TCP data
+					$colored = 1;
+					push @h, "\e[0m$TCP_d";
+					push @a, "\e[0m$TCP_d";
+				}
+
+				my $c = shift @data;
+				push @h, sprintf("%02x", $c);
+				push @h, " " if $i % 2 == 1;
+
+				$c = chr($c);
+				push @a, ($c !~ m/\s/ && $c =~ m/[[:print:]]/ ? $c : '.');
+			}
+			if ($colored) {
+				push @h, "\e[0m";
+				push @a, "\e[0m";
+			}
+			for (; $i < 16; $i++) {
+				push @h, ($i % 2 == 1 ? "   " : "  ");
+				push @a, " ";
+			}
+
+			my $l = sprintf "%#06x:  %s %s", $row, join('', @h), join('', @a);
+			$l =~ s/ (\e\[0m)/$1 /g;
+			print "\t$l\n";
+			$row = $n;
+		}
+
+		$raw = '';
+		print "\n";
+	}
+
+	# 13:47:35.519084 IP (tos 0x0, ttl 64, id 31902, offset 0, flags [DF], proto TCP (6), length 52)
+	# 127.0.0.1.43908 > 127.0.0.1.5432: Flags [.], cksum 0xfe28 (incorrect -> 0x6015), seq 189, ack 157, win 683, options [nop,nop,TS val 130867302 ecr 130867302], length 0
+
+	s/^(\s*)((?:\d{1,3}\.){3}\d{1,3})\.(\d+) > ((?:\d{1,3}\.){3}\d{1,3})\.(\d+):/$1${IP1}$2\e[0m:${P1}$3\e[0m > ${IP2}$4\e[0m:${P2}$5\e[0m:/;
+	s/Flags \[(S|\.|S\.|P\.)\],/Flags [$F_OK$1\e[0m],/;
+	s/Flags \[(R|F|F\.)\],/Flags [$F_END$1\e[0m],/;
+
+	print
+}
