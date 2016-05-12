@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# tcpspy Copyright (c) 2016 James Hunt <james@niftylogic.com>
+# tcptrace Copyright (c) 2016 James Hunt <james@niftylogic.com>
 
 use strict;
 use warnings;
