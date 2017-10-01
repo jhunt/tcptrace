@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# tcptrace Copyright (c) 2016 James Hunt <james@niftylogic.com>
+# tcptrace Copyright (c) 2017 James Hunt <james@niftylogic.com>
 
 use strict;
 use warnings;
@@ -17,6 +17,13 @@ my $P2  = "\e[1;38;5;226m";
 
 my $F_OK  = "\e[1;38;5;46m";
 my $F_END = "\e[1;38;5;196m";
+
+if ($ARGV[0] && $ARGV[0] eq '-v') {
+  print "tcptrace v1.0\n";
+  print "Copyright (c) 2017 James Hunt\n";
+  print "https://jameshunt.us/code/tcptrace\n";
+  exit 0;
+}
 
 my $fh;
 { no warnings; open $fh, "-|", "tcpdump -Xnv ".join(' ', map { "'$_'" } @ARGV)
